@@ -78,46 +78,25 @@ Of 8.4M inscriptions:
 
 ## How to consume
 
+Works the same in modern browsers and Node 18+ — just `fetch`, native `DecompressionStream`, and any CSV library (example uses [papaparse](https://www.papaparse.com/)). See [`demo.html`](./demo.html) for a complete working version.
+
 ```ts
-import { gunzipSync } from 'zlib';
+import Papa from 'papaparse';
 
 const BASE = 'https://ordpool-space.github.io/magic-eden-ordinals-archive';
 
-// 20 of the 5,466 collection names contain commas/quotes (RFC 4180 quoted),
-// so the index needs a real CSV parser — not just split(',').
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [], field = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
-      else if (c === '"') { inQuotes = false; }
-      else { field += c; }
-    } else if (c === '"') { inQuotes = true; }
-    else if (c === ',') { row.push(field); field = ''; }
-    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
-    else if (c !== '\r') { field += c; }
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
-  return rows;
-}
+// Index — plain CSV, gzipped transparently in transit
+const indexCsv = await (await fetch(`${BASE}/index.csv`)).text();
+const { data: collections } = Papa.parse<{
+  symbol: string; name: string; totalVolume: string;
+}>(indexCsv, { header: true });
 
-// Index
-const indexResp = await fetch(`${BASE}/index.csv`);
-const index = parseCsv(await indexResp.text()).slice(1)
-  .map(([symbol, name, totalVolume]) =>
-    ({ symbol, name, totalVolume: Number(totalVolume) }));
-
-// One collection — ids are hex and content types like "image/png" never
-// contain commas, so a plain split is safe here.
-const csvResp = await fetch(`${BASE}/inscriptions/${symbol}.csv.gz`);
-const csv = gunzipSync(Buffer.from(await csvResp.arrayBuffer())).toString();
-const inscriptions = csv.trim().split('\n').slice(1)
-  .map(line => {
-    const [id, contentType] = line.split(',');
-    return { id, contentType };
-  });
+// One collection — pre-gzipped, decompress with native DecompressionStream
+const res = await fetch(`${BASE}/inscriptions/${symbol}.csv.gz`);
+const csv = await new Response(
+  res.body!.pipeThrough(new DecompressionStream('gzip'))
+).text();
+const { data: inscriptions } = Papa.parse<{
+  id: string; contentType: string;
+}>(csv, { header: true });
 ```
-
-(Browser fetch usually auto-decompresses via `Content-Encoding`; on Node you decompress yourself as above.)
