@@ -31,19 +31,21 @@
 
     .picker { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
     .picker label { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
-    select {
-      flex: 1;
-      min-width: 280px;
+    .picker select,
+    .picker input[type="search"] {
       font: inherit;
       padding: 0.55rem 0.75rem;
       border: 1px solid var(--border);
       border-radius: 6px;
       background: var(--bg-elev);
       color: var(--text);
-      cursor: pointer;
     }
-    select:disabled { color: var(--muted); cursor: default; }
-    select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    .picker select { flex: 1; min-width: 240px; cursor: pointer; }
+    .picker input[type="search"] { flex: 0 1 220px; }
+    .picker select:disabled,
+    .picker input[type="search"]:disabled { color: var(--muted); cursor: default; }
+    .picker select:focus,
+    .picker input[type="search"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
     .picker button {
       font: inherit;
       padding: 0.55rem 0.9rem;
@@ -164,11 +166,12 @@
 
     <main>
       <div class="picker">
-        <label for="collection">Collection</label>
+        <label for="search">Collection</label>
+        <input type="search" id="search" placeholder="Search name or symbol…" disabled>
         <select id="collection" disabled>
           <option>Loading index…</option>
         </select>
-        <button id="random" disabled title="Pick a random collection">🎲 Random</button>
+        <button id="random" disabled title="Pick a random collection from current filter">🎲 Random</button>
       </div>
 
       <div id="status"></div>
@@ -193,6 +196,7 @@
     const btcFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const $select = document.getElementById('collection');
+    const $search = document.getElementById('search');
     const $random = document.getElementById('random');
     const $status = document.getElementById('status');
     const $tiles = document.getElementById('tiles');
@@ -262,21 +266,40 @@
       if (!res.ok) throw new Error(`index.csv HTTP ${res.status}`);
       const { data } = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
       data.sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume));
-      collections = data;
 
+      // Precompute display label + lowercased search field per collection.
       const NAME_MAX = 60;
       const truncate = s => s.length > NAME_MAX ? s.slice(0, NAME_MAX - 1) + '…' : s;
-      $select.innerHTML = '<option value="">Pick a collection…</option>' +
-        data.map(d => {
-          const vol = Number(d.totalVolume);
-          const volStr = vol > 0 ? `${btcFmt.format(vol / 1e8)} BTC` : 'no volume';
-          const name = truncate(d.name || d.symbol);
-          const label = `${name}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`;
-          return `<option value="${escapeHtml(d.symbol)}">${escapeHtml(label)}</option>`;
-        }).join('');
+      collections = data.map(d => {
+        const vol = Number(d.totalVolume);
+        const volStr = vol > 0 ? `${btcFmt.format(vol / 1e8)} BTC` : 'no volume';
+        const name = truncate(d.name || d.symbol);
+        return {
+          symbol: d.symbol,
+          label: `${name}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`,
+          search: `${(d.name || '').toLowerCase()} ${d.symbol.toLowerCase()}`,
+        };
+      });
+
+      renderOptions();
       $select.disabled = false;
+      $search.disabled = false;
       $random.disabled = false;
       setStatus(`Index loaded: <strong>${numFmt.format(data.length)}</strong> collections, ranked by all-time trading volume. Pick one above.`);
+    }
+
+    function getFiltered() {
+      const q = $search.value.trim().toLowerCase();
+      return q ? collections.filter(c => c.search.includes(q)) : collections;
+    }
+
+    function renderOptions() {
+      const matches = getFiltered();
+      const placeholder = matches.length === collections.length
+        ? 'Pick a collection…'
+        : `${numFmt.format(matches.length)} match${matches.length === 1 ? '' : 'es'}`;
+      $select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>` +
+        matches.map(o => `<option value="${escapeHtml(o.symbol)}">${escapeHtml(o.label)}</option>`).join('');
     }
 
     async function loadCollection(symbol) {
@@ -322,9 +345,15 @@
     $select.addEventListener('change', e => {
       if (e.target.value) loadCollection(e.target.value);
     });
+    let searchTimer;
+    $search.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderOptions, 100);
+    });
     $random.addEventListener('click', () => {
-      if (!collections.length) return;
-      const pick = collections[Math.floor(Math.random() * collections.length)];
+      const matches = getFiltered();
+      if (!matches.length) return;
+      const pick = matches[Math.floor(Math.random() * matches.length)];
       $select.value = pick.symbol;
       loadCollection(pick.symbol);
     });
