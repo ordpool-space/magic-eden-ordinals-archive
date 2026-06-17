@@ -6,7 +6,6 @@
   <title>Magic Eden Ordinals Archive — Explorer</title>
   <style>
     * { box-sizing: border-box; }
-    [hidden] { display: none !important; }   /* author display rules below would otherwise win */
     :root {
       --bg: #0d1117;
       --bg-elev: #161b22;
@@ -69,6 +68,7 @@
       color: var(--muted);
       flex-wrap: wrap;
     }
+    .pagination[hidden] { display: none; }
     .pagination button {
       font: inherit;
       padding: 0.4rem 0.85rem;
