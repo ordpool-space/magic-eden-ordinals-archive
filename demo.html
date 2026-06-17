@@ -6,115 +6,158 @@
   <title>Magic Eden Ordinals Archive — Explorer</title>
   <style>
     * { box-sizing: border-box; }
+    :root {
+      --bg: #0d1117;
+      --bg-elev: #161b22;
+      --border: #30363d;
+      --border-hi: #58a6ff;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --error-bg: #3c1618;
+      --error-text: #ff7b72;
+    }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 1100px;
-      margin: 2rem auto;
-      padding: 0 1.5rem 4rem;
-      color: #1f2328;
       line-height: 1.5;
+      min-height: 100vh;
     }
-    header h1 { margin: 0 0 0.25rem; }
-    header p { margin: 0 0 2rem; color: #59636e; }
-    header a { color: #0969da; }
-    .picker { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }
-    .picker label { font-weight: 600; }
+    .wrap { padding: 2rem 1.5rem 4rem; }
+    header h1 { margin: 0 0 0.25rem; color: #f0f6fc; font-weight: 600; letter-spacing: -0.01em; }
+    header p { margin: 0 0 2rem; color: var(--muted); max-width: 70ch; }
+    header a { color: var(--accent); text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+
+    .picker { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .picker label { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
     select {
       flex: 1;
+      min-width: 280px;
       font: inherit;
-      padding: 0.5rem 0.75rem;
-      border: 1px solid #d0d7de;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border);
       border-radius: 6px;
-      background: white;
+      background: var(--bg-elev);
+      color: var(--text);
+      cursor: pointer;
     }
-    select:disabled { background: #f6f8fa; color: #59636e; }
+    select:disabled { color: var(--muted); cursor: default; }
+    select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
     #status {
       padding: 0.75rem 1rem;
-      background: #f6f8fa;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
       border-radius: 6px;
       margin-bottom: 1rem;
-      min-height: 1em;
-      font-size: 0.95rem;
-    }
-    #status .note { color: #59636e; font-weight: normal; margin-left: 0.5em; }
-    #status.error { background: #ffebe9; color: #cf222e; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
       font-size: 0.9rem;
+      min-height: 1em;
     }
-    th, td {
-      text-align: left;
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid #eaeef2;
+    #status .note { color: var(--muted); margin-left: 0.5em; }
+    #status.error { background: var(--error-bg); color: var(--error-text); border-color: transparent; }
+    #status strong { color: #f0f6fc; }
+    #status code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
     }
-    th { background: #f6f8fa; font-weight: 600; position: sticky; top: 0; }
-    td:first-child { color: #59636e; text-align: right; width: 4em; }
-    .id {
+    .tile {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 120ms, transform 120ms;
+    }
+    .tile:hover { border-color: var(--border-hi); transform: translateY(-1px); }
+    .tile iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      background: #fff;
+      pointer-events: none;        /* clicks fall through to the link overlay */
+    }
+    .tile-link {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: block;
+    }
+    .tile-caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 0.75rem 0.6rem 0.4rem;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      color: #e6edf3;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 0.85rem;
-      color: #0969da;
-      text-decoration: none;
-      word-break: break-all;
+      font-size: 0.7rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      align-items: end;
+      pointer-events: none;
+      z-index: 3;
     }
-    .id:hover { text-decoration: underline; }
-    .ct { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: #59636e; }
+    .tile-caption .id {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .tile-caption .ct { color: var(--muted); flex-shrink: 0; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Magic Eden Ordinals Archive</h1>
-    <p>
-      Browse 5,466 collections captured before Magic Eden killed its ordinals business in March 2026.
-      Click any inscription to view it on <a href="https://ordinals.com" target="_blank" rel="noopener">ordinals.com</a>.
-      Source &amp; docs:
-      <a href="https://github.com/ordpool-space/magic-eden-ordinals-archive" target="_blank" rel="noopener">github.com/ordpool-space/magic-eden-ordinals-archive</a>.
-    </p>
-  </header>
+  <div class="wrap">
+    <header>
+      <h1>Magic Eden Ordinals Archive</h1>
+      <p>
+        Browse 5,466 collections captured before Magic Eden killed its ordinals business in March 2026.
+        Tiles are live previews via <a href="https://ordinals.com" target="_blank" rel="noopener">ordinals.com</a>; click any tile to open it there.
+        Source &amp; docs: <a href="https://github.com/ordpool-space/magic-eden-ordinals-archive" target="_blank" rel="noopener">github.com/ordpool-space/magic-eden-ordinals-archive</a>.
+      </p>
+    </header>
 
-  <main>
-    <div class="picker">
-      <label for="collection">Collection</label>
-      <select id="collection" disabled>
-        <option>Loading index…</option>
-      </select>
-    </div>
+    <main>
+      <div class="picker">
+        <label for="collection">Collection</label>
+        <select id="collection" disabled>
+          <option>Loading index…</option>
+        </select>
+      </div>
 
-    <div id="status"></div>
+      <div id="status"></div>
 
-    <table id="results" hidden>
-      <thead>
-        <tr><th>#</th><th>Inscription ID</th><th>Content Type</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </main>
+      <div class="tiles" id="tiles"></div>
+    </main>
+  </div>
 
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
-    const SHOW_LIMIT = 500;
+    const SHOW_LIMIT = 200;  // iframes are heavy; cap to keep the browser responsive
     const $select = document.getElementById('collection');
     const $status = document.getElementById('status');
-    const $table = document.getElementById('results');
-    const $tbody = $table.querySelector('tbody');
+    const $tiles = document.getElementById('tiles');
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
       ));
     }
-
-    function setStatus(text, isError) {
+    function setStatus(html, isError) {
       $status.classList.toggle('error', !!isError);
-      $status.innerHTML = text;
+      $status.innerHTML = html;
     }
 
     async function loadIndex() {
       const res = await fetch('index.csv');
       if (!res.ok) throw new Error(`index.csv HTTP ${res.status}`);
       const { data } = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
-
-      // Already sorted by totalVolume desc in the source, but sort defensively.
       data.sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume));
 
       $select.innerHTML = '<option value="">Pick a collection…</option>' +
@@ -130,42 +173,45 @@
 
     async function loadCollection(symbol) {
       setStatus(`Loading <code>${escapeHtml(symbol)}</code>…`);
-      $table.hidden = true;
-      $tbody.innerHTML = '';
+      $tiles.innerHTML = '';
 
       try {
         const res = await fetch(`inscriptions/${encodeURIComponent(symbol)}.csv.gz`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        // Native gzip decompression — works in modern browsers and Node 18+.
         const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
         const csv = await new Response(stream).text();
         const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
 
-        // Content type breakdown
         const counts = {};
         for (const row of data) counts[row.contentType || ''] = (counts[row.contentType || ''] || 0) + 1;
         const breakdown = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
           .map(([ct, n]) => `${escapeHtml(ct || '(empty)')} <span class="note">${(100 * n / data.length).toFixed(1)}%</span>`)
-          .join(' &middot; ');
+          .join(' · ');
 
         const truncated = data.length > SHOW_LIMIT;
         setStatus(
-          `<strong>${data.length.toLocaleString()}</strong> inscriptions &middot; ${breakdown}` +
-          (truncated ? `<span class="note">Showing first ${SHOW_LIMIT}.</span>` : '')
+          `<strong>${data.length.toLocaleString()}</strong> inscriptions · ${breakdown}` +
+          (truncated ? `<span class="note">Showing first ${SHOW_LIMIT} tiles.</span>` : '')
         );
 
         const shown = data.slice(0, SHOW_LIMIT);
-        $tbody.innerHTML = shown.map((row, i) => `
-          <tr>
-            <td>${i + 1}</td>
-            <td><a class="id" href="https://ordinals.com/inscription/${encodeURIComponent(row.id)}" target="_blank" rel="noopener">${escapeHtml(row.id)}</a></td>
-            <td class="ct">${escapeHtml(row.contentType || '')}</td>
-          </tr>
-        `).join('');
-        $table.hidden = false;
+        $tiles.innerHTML = shown.map(row => {
+          const id = encodeURIComponent(row.id);
+          const idShort = row.id.length > 20 ? row.id.slice(0, 10) + '…' + row.id.slice(-6) : row.id;
+          const ct = (row.contentType || '').split(';')[0].split('/').pop() || '?';
+          return `
+            <div class="tile">
+              <iframe src="https://ordinals.com/preview/${id}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts"></iframe>
+              <a class="tile-link" href="https://ordinals.com/inscription/${id}" target="_blank" rel="noopener" title="${escapeHtml(row.id)}"></a>
+              <div class="tile-caption">
+                <span class="id">${escapeHtml(idShort)}</span>
+                <span class="ct">${escapeHtml(ct)}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
       } catch (err) {
         setStatus(`Error loading <code>${escapeHtml(symbol)}</code>: ${escapeHtml(err.message)}`, true);
       }
@@ -174,7 +220,6 @@
     $select.addEventListener('change', e => {
       if (e.target.value) loadCollection(e.target.value);
     });
-
     loadIndex().catch(err => setStatus(`Failed to load index: ${escapeHtml(err.message)}`, true));
   </script>
 </body>
