@@ -210,6 +210,7 @@
     let collections = [];   // loaded index, for the random picker
     let currentRows = [];   // last loaded collection's inscriptions
     let currentPage = 1;
+    let currentSymbol = ''; // which collection we're showing — used to dedupe hash updates
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => (
@@ -286,6 +287,21 @@
       $search.disabled = false;
       $random.disabled = false;
       setStatus(`Index loaded: <strong>${numFmt.format(data.length)}</strong> collections, ranked by all-time trading volume. Pick one above.`);
+
+      // Auto-load if the URL already points at a collection (deep link, refresh, etc.)
+      applyHash();
+    }
+
+    function applyHash() {
+      const sym = decodeURIComponent(location.hash.slice(1));
+      if (!sym || !collections.find(c => c.symbol === sym)) return;
+      // Clear the search filter so the target option is rendered in the select.
+      if ($search.value) {
+        $search.value = '';
+        renderOptions();
+      }
+      $select.value = sym;
+      loadCollection(sym);
     }
 
     function getFiltered() {
@@ -303,6 +319,11 @@
     }
 
     async function loadCollection(symbol) {
+      if (symbol === currentSymbol) return;   // already showing this — avoid hashchange loops
+      currentSymbol = symbol;
+      if (location.hash.slice(1) !== encodeURIComponent(symbol)) {
+        location.hash = encodeURIComponent(symbol);
+      }
       setStatus(`Loading <code>${escapeHtml(symbol)}</code>…`);
       $tiles.innerHTML = '';
       $pagination.hidden = true;
@@ -360,6 +381,7 @@
     $prev.addEventListener('click', () => renderPage(currentPage - 1));
     $next.addEventListener('click', () => renderPage(currentPage + 1));
     $pageInput.addEventListener('change', () => renderPage(parseInt($pageInput.value, 10) || 1));
+    window.addEventListener('hashchange', applyHash);
 
     loadIndex().catch(err => setStatus(`Failed to load index: ${escapeHtml(err.message)}`, true));
   </script>
