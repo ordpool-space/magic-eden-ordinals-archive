@@ -2,6 +2,8 @@
 
 A frozen snapshot of every collection and inscription Magic Eden had on file for Bitcoin ordinals, captured before they shut down their ordinals business in March 2026.
 
+**[Live demo](https://ordpool-space.github.io/magic-eden-ordinals-archive/demo.html)** — pick any collection from a dropdown, browse its inscriptions, click through to ordinals.com.
+
 ## What's here
 
 | | |

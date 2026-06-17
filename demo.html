@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magic Eden Ordinals Archive — Explorer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 1100px;
+      margin: 2rem auto;
+      padding: 0 1.5rem 4rem;
+      color: #1f2328;
+      line-height: 1.5;
+    }
+    header h1 { margin: 0 0 0.25rem; }
+    header p { margin: 0 0 2rem; color: #59636e; }
+    header a { color: #0969da; }
+    .picker { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }
+    .picker label { font-weight: 600; }
+    select {
+      flex: 1;
+      font: inherit;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: white;
+    }
+    select:disabled { background: #f6f8fa; color: #59636e; }
+    #status {
+      padding: 0.75rem 1rem;
+      background: #f6f8fa;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      min-height: 1em;
+      font-size: 0.95rem;
+    }
+    #status .note { color: #59636e; font-weight: normal; margin-left: 0.5em; }
+    #status.error { background: #ffebe9; color: #cf222e; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #eaeef2;
+    }
+    th { background: #f6f8fa; font-weight: 600; position: sticky; top: 0; }
+    td:first-child { color: #59636e; text-align: right; width: 4em; }
+    .id {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+      color: #0969da;
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .id:hover { text-decoration: underline; }
+    .ct { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: #59636e; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Magic Eden Ordinals Archive</h1>
+    <p>
+      Browse 5,466 collections captured before Magic Eden killed its ordinals business in March 2026.
+      Click any inscription to view it on <a href="https://ordinals.com" target="_blank" rel="noopener">ordinals.com</a>.
+      Source &amp; docs:
+      <a href="https://github.com/ordpool-space/magic-eden-ordinals-archive" target="_blank" rel="noopener">github.com/ordpool-space/magic-eden-ordinals-archive</a>.
+    </p>
+  </header>
+
+  <main>
+    <div class="picker">
+      <label for="collection">Collection</label>
+      <select id="collection" disabled>
+        <option>Loading index…</option>
+      </select>
+    </div>
+
+    <div id="status"></div>
+
+    <table id="results" hidden>
+      <thead>
+        <tr><th>#</th><th>Inscription ID</th><th>Content Type</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    const SHOW_LIMIT = 500;
+    const $select = document.getElementById('collection');
+    const $status = document.getElementById('status');
+    const $table = document.getElementById('results');
+    const $tbody = $table.querySelector('tbody');
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function setStatus(text, isError) {
+      $status.classList.toggle('error', !!isError);
+      $status.innerHTML = text;
+    }
+
+    async function loadIndex() {
+      const res = await fetch('index.csv');
+      if (!res.ok) throw new Error(`index.csv HTTP ${res.status}`);
+      const { data } = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
+
+      // Already sorted by totalVolume desc in the source, but sort defensively.
+      data.sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume));
+
+      $select.innerHTML = '<option value="">Pick a collection…</option>' +
+        data.map(d => {
+          const vol = Number(d.totalVolume);
+          const volStr = vol > 0 ? `${(vol / 1e8).toFixed(2)} BTC` : 'no volume';
+          const label = `${d.name || d.symbol}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`;
+          return `<option value="${escapeHtml(d.symbol)}">${escapeHtml(label)}</option>`;
+        }).join('');
+      $select.disabled = false;
+      setStatus(`Index loaded: <strong>${data.length.toLocaleString()}</strong> collections. Pick one above.`);
+    }
+
+    async function loadCollection(symbol) {
+      setStatus(`Loading <code>${escapeHtml(symbol)}</code>…`);
+      $table.hidden = true;
+      $tbody.innerHTML = '';
+
+      try {
+        const res = await fetch(`inscriptions/${encodeURIComponent(symbol)}.csv.gz`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        // Native gzip decompression — works in modern browsers and Node 18+.
+        const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
+        const csv = await new Response(stream).text();
+        const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
+
+        // Content type breakdown
+        const counts = {};
+        for (const row of data) counts[row.contentType || ''] = (counts[row.contentType || ''] || 0) + 1;
+        const breakdown = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([ct, n]) => `${escapeHtml(ct || '(empty)')} <span class="note">${(100 * n / data.length).toFixed(1)}%</span>`)
+          .join(' &middot; ');
+
+        const truncated = data.length > SHOW_LIMIT;
+        setStatus(
+          `<strong>${data.length.toLocaleString()}</strong> inscriptions &middot; ${breakdown}` +
+          (truncated ? `<span class="note">Showing first ${SHOW_LIMIT}.</span>` : '')
+        );
+
+        const shown = data.slice(0, SHOW_LIMIT);
+        $tbody.innerHTML = shown.map((row, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td><a class="id" href="https://ordinals.com/inscription/${encodeURIComponent(row.id)}" target="_blank" rel="noopener">${escapeHtml(row.id)}</a></td>
+            <td class="ct">${escapeHtml(row.contentType || '')}</td>
+          </tr>
+        `).join('');
+        $table.hidden = false;
+      } catch (err) {
+        setStatus(`Error loading <code>${escapeHtml(symbol)}</code>: ${escapeHtml(err.message)}`, true);
+      }
+    }
+
+    $select.addEventListener('change', e => {
+      if (e.target.value) loadCollection(e.target.value);
+    });
+
+    loadIndex().catch(err => setStatus(`Failed to load index: ${escapeHtml(err.message)}`, true));
+  </script>
+</body>
+</html>
