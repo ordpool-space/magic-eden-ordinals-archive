@@ -59,6 +59,40 @@
     #status strong { color: #f0f6fc; }
     #status code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
 
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .pagination button {
+      font: inherit;
+      padding: 0.4rem 0.85rem;
+      background: var(--bg-elev);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination button:not(:disabled):hover { border-color: var(--border-hi); }
+    .pagination input {
+      font: inherit;
+      width: 5em;
+      padding: 0.35rem 0.5rem;
+      background: var(--bg-elev);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-align: center;
+    }
+    .pagination input::-webkit-outer-spin-button,
+    .pagination input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .pagination .range { margin-left: auto; }
+
     .tiles {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -80,14 +114,9 @@
       border: 0;
       display: block;
       background: #fff;
-      pointer-events: none;        /* clicks fall through to the link overlay */
+      pointer-events: none;
     }
-    .tile-link {
-      position: absolute;
-      inset: 0;
-      z-index: 2;
-      display: block;
-    }
+    .tile-link { position: absolute; inset: 0; z-index: 2; display: block; }
     .tile-caption {
       position: absolute;
       left: 0; right: 0; bottom: 0;
@@ -103,12 +132,7 @@
       pointer-events: none;
       z-index: 3;
     }
-    .tile-caption .id {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
-    }
+    .tile-caption .id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .tile-caption .ct { color: var(--muted); flex-shrink: 0; }
   </style>
 </head>
@@ -117,8 +141,10 @@
     <header>
       <h1>Magic Eden Ordinals Archive</h1>
       <p>
-        Browse 5,466 collections captured before Magic Eden killed its ordinals business in March 2026.
-        Tiles are live previews via <a href="https://ordinals.com" target="_blank" rel="noopener">ordinals.com</a>; click any tile to open it there.
+        Browse 5,466 collections captured before Magic Eden killed its ordinals business in March 2026,
+        ranked by all-time trading volume on ME.
+        Tiles are live previews via <a href="https://ordinals.com" target="_blank" rel="noopener">ordinals.com</a>;
+        click any tile to open it there.
         Source &amp; docs: <a href="https://github.com/ordpool-space/magic-eden-ordinals-archive" target="_blank" rel="noopener">github.com/ordpool-space/magic-eden-ordinals-archive</a>.
       </p>
     </header>
@@ -133,16 +159,37 @@
 
       <div id="status"></div>
 
+      <div class="pagination" id="pagination" hidden>
+        <button id="prev">‹ Prev</button>
+        <span>Page</span>
+        <input id="page-input" type="number" min="1" value="1">
+        <span>of <span id="page-total">1</span></span>
+        <button id="next">Next ›</button>
+        <span class="range" id="page-range"></span>
+      </div>
+
       <div class="tiles" id="tiles"></div>
     </main>
   </div>
 
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
-    const SHOW_LIMIT = 200;  // iframes are heavy; cap to keep the browser responsive
+    const PAGE_SIZE = 200;  // iframes are heavy; cap per page to keep the browser responsive
+    const numFmt = new Intl.NumberFormat('en-US');
+    const btcFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const $select = document.getElementById('collection');
     const $status = document.getElementById('status');
     const $tiles = document.getElementById('tiles');
+    const $pagination = document.getElementById('pagination');
+    const $prev = document.getElementById('prev');
+    const $next = document.getElementById('next');
+    const $pageInput = document.getElementById('page-input');
+    const $pageTotal = document.getElementById('page-total');
+    const $pageRange = document.getElementById('page-range');
+
+    let currentRows = [];   // last loaded collection's inscriptions
+    let currentPage = 1;
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => (
@@ -152,6 +199,46 @@
     function setStatus(html, isError) {
       $status.classList.toggle('error', !!isError);
       $status.innerHTML = html;
+    }
+
+    function renderTiles(rows) {
+      $tiles.innerHTML = rows.map(row => {
+        const id = encodeURIComponent(row.id);
+        const idShort = row.id.length > 20 ? row.id.slice(0, 10) + '…' + row.id.slice(-6) : row.id;
+        const ct = (row.contentType || '').split(';')[0].split('/').pop() || '?';
+        return `
+          <div class="tile">
+            <iframe src="https://ordinals.com/preview/${id}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts"></iframe>
+            <a class="tile-link" href="https://ordinals.com/inscription/${id}" target="_blank" rel="noopener" title="${escapeHtml(row.id)}"></a>
+            <div class="tile-caption">
+              <span class="id">${escapeHtml(idShort)}</span>
+              <span class="ct">${escapeHtml(ct)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderPage(page) {
+      const total = currentRows.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      currentPage = Math.max(1, Math.min(page, totalPages));
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const end = Math.min(start + PAGE_SIZE, total);
+
+      renderTiles(currentRows.slice(start, end));
+
+      if (total > PAGE_SIZE) {
+        $pagination.hidden = false;
+        $pageInput.value = currentPage;
+        $pageInput.max = totalPages;
+        $pageTotal.textContent = numFmt.format(totalPages);
+        $prev.disabled = currentPage <= 1;
+        $next.disabled = currentPage >= totalPages;
+        $pageRange.textContent = `Showing ${numFmt.format(start + 1)}–${numFmt.format(end)} of ${numFmt.format(total)}`;
+      } else {
+        $pagination.hidden = true;
+      }
     }
 
     async function loadIndex() {
@@ -165,18 +252,20 @@
       $select.innerHTML = '<option value="">Pick a collection…</option>' +
         data.map(d => {
           const vol = Number(d.totalVolume);
-          const volStr = vol > 0 ? `${(vol / 1e8).toFixed(2)} BTC` : 'no volume';
+          const volStr = vol > 0 ? `${btcFmt.format(vol / 1e8)} BTC` : 'no volume';
           const name = truncate(d.name || d.symbol);
           const label = `${name}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`;
           return `<option value="${escapeHtml(d.symbol)}">${escapeHtml(label)}</option>`;
         }).join('');
       $select.disabled = false;
-      setStatus(`Index loaded: <strong>${data.length.toLocaleString()}</strong> collections. Pick one above.`);
+      setStatus(`Index loaded: <strong>${numFmt.format(data.length)}</strong> collections, ranked by all-time trading volume. Pick one above.`);
     }
 
     async function loadCollection(symbol) {
       setStatus(`Loading <code>${escapeHtml(symbol)}</code>…`);
       $tiles.innerHTML = '';
+      $pagination.hidden = true;
+      currentRows = [];
 
       try {
         const res = await fetch(`inscriptions/${encodeURIComponent(symbol)}.csv.gz`);
@@ -193,28 +282,10 @@
           .map(([ct, n]) => `${escapeHtml(ct || '(empty)')} <span class="note">${(100 * n / data.length).toFixed(1)}%</span>`)
           .join(' · ');
 
-        const truncated = data.length > SHOW_LIMIT;
-        setStatus(
-          `<strong>${data.length.toLocaleString()}</strong> inscriptions · ${breakdown}` +
-          (truncated ? `<span class="note">Showing first ${SHOW_LIMIT} tiles.</span>` : '')
-        );
+        setStatus(`<strong>${numFmt.format(data.length)}</strong> inscriptions · ${breakdown}`);
 
-        const shown = data.slice(0, SHOW_LIMIT);
-        $tiles.innerHTML = shown.map(row => {
-          const id = encodeURIComponent(row.id);
-          const idShort = row.id.length > 20 ? row.id.slice(0, 10) + '…' + row.id.slice(-6) : row.id;
-          const ct = (row.contentType || '').split(';')[0].split('/').pop() || '?';
-          return `
-            <div class="tile">
-              <iframe src="https://ordinals.com/preview/${id}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts"></iframe>
-              <a class="tile-link" href="https://ordinals.com/inscription/${id}" target="_blank" rel="noopener" title="${escapeHtml(row.id)}"></a>
-              <div class="tile-caption">
-                <span class="id">${escapeHtml(idShort)}</span>
-                <span class="ct">${escapeHtml(ct)}</span>
-              </div>
-            </div>
-          `;
-        }).join('');
+        currentRows = data;
+        renderPage(1);
       } catch (err) {
         setStatus(`Error loading <code>${escapeHtml(symbol)}</code>: ${escapeHtml(err.message)}`, true);
       }
@@ -223,6 +294,10 @@
     $select.addEventListener('change', e => {
       if (e.target.value) loadCollection(e.target.value);
     });
+    $prev.addEventListener('click', () => renderPage(currentPage - 1));
+    $next.addEventListener('click', () => renderPage(currentPage + 1));
+    $pageInput.addEventListener('change', () => renderPage(parseInt($pageInput.value, 10) || 1));
+
     loadIndex().catch(err => setStatus(`Failed to load index: ${escapeHtml(err.message)}`, true));
   </script>
 </body>
