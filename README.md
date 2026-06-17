@@ -79,8 +79,10 @@ Of 8.4M inscriptions:
 ```ts
 import { gunzipSync } from 'zlib';
 
+const BASE = 'https://ordpool-space.github.io/magic-eden-ordinals-archive';
+
 // Index
-const indexResp = await fetch('https://your-host/index.csv');
+const indexResp = await fetch(`${BASE}/index.csv`);
 const index = (await indexResp.text())
   .trim().split('\n').slice(1)
   .map(line => {
@@ -90,7 +92,7 @@ const index = (await indexResp.text())
   });
 
 // One collection
-const csvResp = await fetch(`https://your-host/inscriptions/${symbol}.csv.gz`);
+const csvResp = await fetch(`${BASE}/inscriptions/${symbol}.csv.gz`);
 const csv = gunzipSync(Buffer.from(await csvResp.arrayBuffer())).toString();
 const inscriptions = csv.trim().split('\n').slice(1)
   .map(line => {
