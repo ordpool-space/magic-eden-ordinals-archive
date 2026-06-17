@@ -81,17 +81,34 @@ import { gunzipSync } from 'zlib';
 
 const BASE = 'https://ordpool-space.github.io/magic-eden-ordinals-archive';
 
+// 20 of the 5,466 collection names contain commas/quotes (RFC 4180 quoted),
+// so the index needs a real CSV parser — not just split(',').
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else if (c === '"') { inQuotes = true; }
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c !== '\r') { field += c; }
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
 // Index
 const indexResp = await fetch(`${BASE}/index.csv`);
-const index = (await indexResp.text())
-  .trim().split('\n').slice(1)
-  .map(line => {
-    // RFC 4180 — minimal parser; use a library if you have unusual names
-    const [symbol, name, totalVolume] = line.split(',');
-    return { symbol, name, totalVolume: Number(totalVolume) };
-  });
+const index = parseCsv(await indexResp.text()).slice(1)
+  .map(([symbol, name, totalVolume]) =>
+    ({ symbol, name, totalVolume: Number(totalVolume) }));
 
-// One collection
+// One collection — ids are hex and content types like "image/png" never
+// contain commas, so a plain split is safe here.
 const csvResp = await fetch(`${BASE}/inscriptions/${symbol}.csv.gz`);
 const csv = gunzipSync(Buffer.from(await csvResp.arrayBuffer())).toString();
 const inscriptions = csv.trim().split('\n').slice(1)
