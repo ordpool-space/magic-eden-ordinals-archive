@@ -160,11 +160,14 @@
       const { data } = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
       data.sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume));
 
+      const NAME_MAX = 60;
+      const truncate = s => s.length > NAME_MAX ? s.slice(0, NAME_MAX - 1) + '…' : s;
       $select.innerHTML = '<option value="">Pick a collection…</option>' +
         data.map(d => {
           const vol = Number(d.totalVolume);
           const volStr = vol > 0 ? `${(vol / 1e8).toFixed(2)} BTC` : 'no volume';
-          const label = `${d.name || d.symbol}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`;
+          const name = truncate(d.name || d.symbol);
+          const label = `${name}${d.name ? ` (${d.symbol})` : ''} — ${volStr}`;
           return `<option value="${escapeHtml(d.symbol)}">${escapeHtml(label)}</option>`;
         }).join('');
       $select.disabled = false;
