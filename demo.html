@@ -44,6 +44,18 @@
     }
     select:disabled { color: var(--muted); cursor: default; }
     select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    .picker button {
+      font: inherit;
+      padding: 0.55rem 0.9rem;
+      background: var(--bg-elev);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .picker button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .picker button:not(:disabled):hover { border-color: var(--border-hi); }
 
     #status {
       padding: 0.75rem 1rem;
@@ -156,6 +168,7 @@
         <select id="collection" disabled>
           <option>Loading index…</option>
         </select>
+        <button id="random" disabled title="Pick a random collection">🎲 Random</button>
       </div>
 
       <div id="status"></div>
@@ -180,6 +193,7 @@
     const btcFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const $select = document.getElementById('collection');
+    const $random = document.getElementById('random');
     const $status = document.getElementById('status');
     const $tiles = document.getElementById('tiles');
     const $pagination = document.getElementById('pagination');
@@ -189,6 +203,7 @@
     const $pageTotal = document.getElementById('page-total');
     const $pageRange = document.getElementById('page-range');
 
+    let collections = [];   // loaded index, for the random picker
     let currentRows = [];   // last loaded collection's inscriptions
     let currentPage = 1;
 
@@ -247,6 +262,7 @@
       if (!res.ok) throw new Error(`index.csv HTTP ${res.status}`);
       const { data } = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
       data.sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume));
+      collections = data;
 
       const NAME_MAX = 60;
       const truncate = s => s.length > NAME_MAX ? s.slice(0, NAME_MAX - 1) + '…' : s;
@@ -259,6 +275,7 @@
           return `<option value="${escapeHtml(d.symbol)}">${escapeHtml(label)}</option>`;
         }).join('');
       $select.disabled = false;
+      $random.disabled = false;
       setStatus(`Index loaded: <strong>${numFmt.format(data.length)}</strong> collections, ranked by all-time trading volume. Pick one above.`);
     }
 
@@ -304,6 +321,12 @@
 
     $select.addEventListener('change', e => {
       if (e.target.value) loadCollection(e.target.value);
+    });
+    $random.addEventListener('click', () => {
+      if (!collections.length) return;
+      const pick = collections[Math.floor(Math.random() * collections.length)];
+      $select.value = pick.symbol;
+      loadCollection(pick.symbol);
     });
     $prev.addEventListener('click', () => renderPage(currentPage - 1));
     $next.addEventListener('click', () => renderPage(currentPage + 1));
