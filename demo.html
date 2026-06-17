@@ -277,11 +277,21 @@
 
         const counts = {};
         for (const row of data) counts[row.contentType || ''] = (counts[row.contentType || ''] || 0) + 1;
-        const breakdown = Object.entries(counts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([ct, n]) => `${escapeHtml(ct || '(empty)')} <span class="note">${(100 * n / data.length).toFixed(1)}%</span>`)
-          .join(' · ');
+
+        // Show top types that round to >= 0.1% — skip noise that would display as "0.0%".
+        const sortedTypes = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const parts = [];
+        let hiddenTypes = 0;
+        for (const [ct, n] of sortedTypes) {
+          const pctStr = (100 * n / data.length).toFixed(1);
+          if (pctStr !== '0.0' && parts.length < 5) {
+            parts.push(`${escapeHtml(ct || '(empty)')} <span class="note">${pctStr}%</span>`);
+          } else {
+            hiddenTypes++;
+          }
+        }
+        if (hiddenTypes > 0) parts.push(`<span class="note">+ ${hiddenTypes} more</span>`);
+        const breakdown = parts.join(' · ');
 
         setStatus(`<strong>${numFmt.format(data.length)}</strong> inscriptions · ${breakdown}`);
 
