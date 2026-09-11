@@ -1,0 +1,10 @@
+{
+  "prefixLength": 3,
+  "shards": 4096,
+  "rows": 8379744,
+  "columns": [
+    "id",
+    "symbol"
+  ],
+  "builtFrom": "inscriptions/{symbol}.csv.gz"
+}

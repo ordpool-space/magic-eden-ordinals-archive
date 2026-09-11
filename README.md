@@ -47,6 +47,25 @@ b099cd5b41a50c4af026c99e08cabbd7b611a8879aa90dcdf9f768dd8f77e605i0,image/png
 
 `id` is the standard inscription ID format (`<64 hex>i<index>`). `contentType` is the MIME type as ME recorded it; the value can be empty for a handful of weird records (~1,500 of 8.4M).
 
+### `by-id/{prefix}.csv.gz` (reverse index)
+
+Answers the opposite question: which collection is inscription `X` in? The 8.4M rows are sharded by the first three hex characters of the id into 4,096 gzipped CSVs with header `id,symbol`, sorted by id, so one lookup is one small download instead of a scan over 5,466 collection files. Every id is in exactly one collection (the build aborts otherwise). `by-id/index.json` records the layout (`prefixLength`, `shards`, `rows`).
+
+```csv
+id,symbol
+3d228390e86dd1f02fc010b5b0273280f9576583313711aad5f884bd43b2e363i0,goosinals_
+```
+
+```ts
+const id = '3d228390e86dd1f02fc010b5b0273280f9576583313711aad5f884bd43b2e363i0';
+const shard = await fetch(`${BASE}/by-id/${id.slice(0, 3)}.csv.gz`)
+  .then(r => r.body.pipeThrough(new DecompressionStream('gzip')))
+  .then(s => new Response(s).text());
+const symbol = shard.split('\n').find(row => row.startsWith(id + ','))?.slice(id.length + 1) ?? null;
+```
+
+Generated from the per-collection files by `scripts/build-reverse-index.mjs` (Node 22, no dependencies, about half a minute).
+
 ## Top 10 collections by trading volume
 
 | # | Symbol | Name | Total volume (BTC) |
